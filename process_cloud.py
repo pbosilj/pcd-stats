@@ -20,6 +20,11 @@ def add_index(cloud, index, name = 'index'):
     cloud[name] = map(index, map(common.to_Point_rgb, zip(cloud.r, cloud.g, cloud.b)))
     return cloud
 
+def combine_clouds(cloud_list):
+    cloud = pandas.concat(cloud_list, ignore_index=True)
+    cloud.reset_index(drop = True, inplace = True)
+    return cloud
+
 def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_file = None, dpi = 400, show = True, cmin = None, cmax = None):
     if not output_file and not show:
         return

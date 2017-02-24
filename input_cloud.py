@@ -3,6 +3,7 @@
 
 import pandas
 import os
+import glob
 import subprocess as subproc
 import sys
 import common # for split_rgba
@@ -40,6 +41,14 @@ def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a 
         print("Cleaning up pcd file " + output + ".")
         os.remove(output)
 
+    return cloud
+
+def read_clouds(path, filenames, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True):
+    all_full_names = glob.glob(os.path.join(path,extension))
+    cloud = pandas.DataFrame()
+    for filename in map(os.path.basename, all_full_names):
+        cloud = cloud.append(read_cloud(path, filenames, use_existing, cleanup_pcd, drop_a, drop_rgba)
+    cloud.reset_index(drop = True, inplace = True)
     return cloud
 
 def main():

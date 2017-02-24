@@ -9,7 +9,14 @@ import sys
 import common # for split_rgba
 
 def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True):
-    
+
+    if filename.endswith((".xml", ".pcd")):
+        filename = filename[0:-4]
+    elif filename.endswith("_depth.pclzf"):
+        filename = filename[0:-(len("_depth.pclzf"))]
+    elif filename.endswith("_rgb.pclzf"):
+        filename = filename[0:-(len("_rgb.pclzf"))]
+
     depth = os.path.join(path, filename+"_depth.pclzf")
     rgb = os.path.join(path, filename+"_rgb.pclzf")
     param = os.path.join(path, filename+".xml")
@@ -44,10 +51,17 @@ def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a 
     return cloud
 
 def read_clouds(path, filenames, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True):
-    all_full_names = glob.glob(os.path.join(path,extension))
+    all_full_names = glob.glob(os.path.join(path,filenames))
     cloud = pandas.DataFrame()
     for filename in map(os.path.basename, all_full_names):
-        cloud = cloud.append(read_cloud(path, filenames, use_existing, cleanup_pcd, drop_a, drop_rgba)
+        if filename.endswith((".xml", ".pcd")):
+            filename = filename[0:-4]
+        elif filename.endswith("_depth.pclzf"):
+            filename = filename[0:-(len("_depth.pclzf"))]
+        elif filename.endswith("_rgb.pclzf"):
+            filename = filename[0:-(len("_rgb.pclzf"))]
+        cloud = cloud.append(read_cloud(path, filename, use_existing, cleanup_pcd, drop_a, drop_rgba))
+
     cloud.reset_index(drop = True, inplace = True)
     return cloud
 

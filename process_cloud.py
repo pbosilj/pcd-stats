@@ -25,7 +25,7 @@ def combine_clouds(cloud_list):
     cloud.reset_index(drop = True, inplace = True)
     return cloud
 
-def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_file = None, dpi = 400, show = True, cmin = None, cmax = None):
+def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_file = None, dpi = 100, show = True, cmin = None, cmax = None):
     if not output_file and not show:
         return
 
@@ -39,8 +39,14 @@ def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_fil
         indices = cloud.columns.values.tolist()
 
     if not cmin or not cmax:
-        quant = cloud.quantile([low, high])
+        quant = cloud.quantile([low, high, 0.01, 0.99])
         cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
+        if 'VEG' in indices:
+            vmin = quant.loc[0.01, 'VEG']
+            vmax = quant.loc[0.99, 'VEG']
+            cloud = cloud [vmin <= cloud['VEG']]
+            cloud = cloud [cloud['VEG'] <= vmax]
+            
         cloud.dropna(inplace = True)
     else:
         cloud = cloud [cmin <= cloud.indices[0]]
@@ -48,8 +54,11 @@ def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_fil
 
     cloud.reset_index(drop = True, inplace = True)
         
-    axes = scatter_matrix(cloud, alpha = 0.02, hist_kwds={'bins' : 50})
+#    fig, ax = plt.subplots()
+    axes = scatter_matrix(cloud, alpha = 0.02, hist_kwds={'bins' : 50}, figsize = (1200/dpi, 800/dpi))
     fig = axes[0][0].figure
+#    plt.ion()
+#    fig.set_size_inches(600/fig.dpi, 400/fig.dpi)
 
     if output_file:
 #        for ax in chain.from_iterable(zip(*axes)):
@@ -64,32 +73,34 @@ def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_fil
     plt.close('all')
     plt.ion()
 
-def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, dpi = 400, show = True, cmin = None, cmax = None):
+def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, dpi = 400, show = True, cmin = None, cmax = None, levels = None, both = False, nbins = 50):
     if not output_file and not show:
         return
 
     plt.close('all')
-    plt.ioff()
     fig, ax = plt.subplots()
+    plt.figure.figsize = (1200/dpi, 400/dpi)
 
-    if not cmin or not cmax:
+    plt.ioff()
+
+    if not cmin or not cmax or both:
         quant = cloud.quantile([low, high])
         cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
         cloud.dropna(inplace = True)
-    else:
-        cloud = cloud [cmin <= cloud.indices[0]]
-        cloud = cloud [cloud.indices[0] <= cmax]
+    if cmin and cmax:    
+        cloud = cloud [cmin <= cloud[indices[0]]]
+        cloud = cloud [cloud[indices[0]] <= cmax]
 
     cloud.dropna(inplace = True)
 
-    nbins = 200
-    H, xedges, yedges = numpy.histogram2d(cloud[indices[0]], cloud[indices[1]], bins = (100, 100), normed = True)
+    H, xedges, yedges = numpy.histogram2d(cloud[indices[0]], cloud[indices[1]], bins = [nbins, nbins], normed = True)
     H = numpy.rot90(H)
     H = numpy.flipud(H)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     
-    levels = (0.03, 0.08, 0.15, 0.4, 0.6, 0.8)
-    colors = ['#ff0000ff', '#aa5511ff', '#dd6622ff', '#ffda97ff', '#443300ff', '#998822ff']
+    if not levels:
+        levels = (0.03, 0.08, 0.15, 0.4, 0.6, 0.8)
+    colors = ['#ff0000ff', '#aa5511ff', '#dd6622ff', '#ffda97ff', '#998822ff', '#779911ff']
 
     density = ax.imshow(H, interpolation = 'bilinear', origin = 'lower', cmap = 'hot', extent = extent, aspect = 'auto', alpha = 0.9)
     ax.autoscale(False)
@@ -97,10 +108,10 @@ def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, 
     ax.set_xlabel(indices[0])
     ax.set_ylabel(indices[1])
 
-    contours = ax.contour(gaussian_filter(H, 1.2), levels = levels, origin = 'lower', linewidths = 2.7, extent = extent, alpha = 1.0, colors = colors)
+    contours = ax.contour(gaussian_filter(H, 1.2), levels = levels, origin = 'lower', linewidths = 2.2, extent = extent, alpha = 1.0, colors = colors, normalize = True)
     for c in contours.collections:
         c.set_linestyle("solid")
-    ax.clabel(contours, inline = 1, fontsize = 13, fmt = '%3.2f')
+    ax.clabel(contours, inline = 1, fontsize = 11, fmt = '%3.2f')
     ccolorbar = plt.colorbar(contours, shrink = 1.0, extend = 'both')
     dcolorbar = plt.colorbar(density, orientation = 'horizontal')
 
@@ -119,7 +130,7 @@ def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, 
     plt.close('all')
     plt.ion()
 
-def display_index_cloud(cloud, index, low = 0.005, high = 0.995, output_file = None, show = True, invert = False, mmin = None, mmax = None):
+def display_index_cloud(cloud, index, low = 0.005, high = 0.995, output_file = None, show = True, invert = False, mmin = None, mmax = None, density = 5):
     if not output_file and not show:
         return
     cloud = cloud[numpy.abs(cloud.z - cloud.z.mean()) <= 3*cloud.z.std()]
@@ -140,10 +151,10 @@ def display_index_cloud(cloud, index, low = 0.005, high = 0.995, output_file = N
     if invert:
         cloud.loc[:, index] *= -1;
         vmin, vmax = vmax, vmin
-    points = mlab.points3d(cloud['x'], cloud['y'], cloud['z'], cloud[index], figure = fig, mode='sphere', scale_mode = 'none', scale_factor = 0.02, mask_points = 5, colormap = 'hot', vmin = vmin, vmax = vmax)
+    points = mlab.points3d(cloud['x'], cloud['y'], cloud['z'], cloud[index], figure = fig, mode='sphere', scale_mode = 'none', scale_factor = 0.02, mask_points = density, colormap = 'hot', vmin = vmin, vmax = vmax)
 
     axes = mlab.axes(points, color = (0.9, 0.9, 0.9), xlabel = '', ylabel = '', zlabel = 'height')
-    axes.axes.property.line_width = 2
+    axes.axes.property.line_width = 4
     axes.axes.font_factor = 1
     axes.axes.axis_label_text_property.font_family = 'times'
     axes.axes.axis_label_text_property.bold = False
@@ -183,9 +194,9 @@ def display_index_cloud(cloud, index, low = 0.005, high = 0.995, output_file = N
     if show:
         mlab.show()
         mlab.clf(fig)
-        mlab.close()
+#        mlab.close()
 
-def display_color_cloud(cloud, output_file = None, show = True):
+def display_color_cloud(cloud, output_file = None, show = True, density = 5):
     if not output_file and not show:
         return
     cloud = cloud[numpy.abs(cloud.z - cloud.z.mean()) <= 3*cloud.z.std()]
@@ -193,18 +204,19 @@ def display_color_cloud(cloud, output_file = None, show = True):
 
     scalars = map(common.rgb_to_scalar, zip(cloud.r, cloud.g, cloud.b))
 
-    fig = mlab.figure('ColorCloud', size = (810, 700))
+    fig = mlab.figure('ColorCloud', size = (810, 700), bgcolor = (1,1,1), fgcolor=(0,0,0))
     fig.scene.disable_render = True
-    mlab.figure(figure = fig, bgcolor=(1,1,1), fgcolor=(0,0,0))
-    points = mlab.points3d(cloud['x'], cloud['y'], cloud['z'], scalars, figure = fig, mode='sphere', scale_mode = 'none', scale_factor = 0.02, mask_points = 5)
+#    mlab.figure(figure = fig, bgcolor=(1,1,1), fgcolor=(0,0,0))
+    points = mlab.points3d(cloud['x'], cloud['y'], cloud['z'], scalars, figure = fig, mode='sphere', scale_mode = 'none', scale_factor = 0.02, mask_points = density)
+
     points.glyph.color_mode = 'color_by_scalar'
     points.module_manager.scalar_lut_manager.lut._vtk_obj.SetTableRange(0, lut_rgb.shape[0])
     points.module_manager.scalar_lut_manager.lut.number_of_colors = lut_rgb.shape[0]
     points.module_manager.scalar_lut_manager.lut.table = lut_rgb
 
-    axes = mlab.axes(points, color = (0.9, 0.9, 0.9), xlabel = '', ylabel = '', zlabel = 'height')
+    axes = mlab.axes(points, color = (0.9, 0.9, 0.9), xlabel = '', ylabel = '', zlabel = 'height', line_width = 4.0)
     axes.axes.font_factor = 1
-    axes.axes.property.line_width = 2
+    axes.axes.property.line_width = 4.0
     axes.axes.axis_label_text_property.font_family = 'times'
     axes.axes.axis_label_text_property.bold = False
     axes.axes.axis_title_text_property.font_family = 'times'
@@ -218,7 +230,7 @@ def display_color_cloud(cloud, output_file = None, show = True):
     if show:
         mlab.show()
         mlab.clf(fig)
-        mlab.close()
+        #mlab.close()
 
 
 

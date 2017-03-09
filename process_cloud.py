@@ -12,6 +12,9 @@ from mayavi import mlab
 from mayavi import tools
 from scipy.ndimage.filters import gaussian_filter
 from itertools import chain
+import collections
+
+import matplotlib
 
 values_rgb = numpy.mgrid[0:256, 0:256, 0:256]
 lut_rgb = numpy.vstack((values_rgb[0].reshape(1, 256**3), values_rgb[1].reshape(1, 256**3), values_rgb[2].reshape(1, 256**3), 255*numpy.ones((1, 256**3)))).T.astype('int32')
@@ -25,7 +28,35 @@ def combine_clouds(cloud_list):
     cloud.reset_index(drop = True, inplace = True)
     return cloud
 
-def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_file = None, dpi = 100, show = True, cmin = None, cmax = None):
+def filter_cloud(cloud, low, high, cmin = None, cmax = None, both = False):
+
+    if not cmin or not cmax or both:
+        quant = cloud.quantile([low, high, 0.01, 0.99])
+        cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
+        if 'VEG' in cloud.keys():
+            vmin = quant.loc[0.01, 'VEG']
+            vmax = quant.loc[0.99, 'VEG']
+            cloud = cloud [vmin <= cloud['VEG']]
+            cloud = cloud [cloud['VEG'] <= vmax]
+            
+        cloud.dropna(inplace = True)
+    
+    if cmin and cmax:
+        if not (collections.Counter(cmin.keys()) == collections.Counter(cmax.keys())):
+            print "Keys in cmin and cmax need to match. Aborting."
+            return
+        for key in cmin.keys():
+            if key not in cloud.keys():
+                print "Key {} not in the cloud. Abortin.".format(key)
+                return
+            cloud = cloud [cmin[key] <= cloud[key]]
+            cloud = cloud [cloud[key] <= cmax[key]]
+
+    cloud.reset_index(drop = True, inplace = True)
+
+    return cloud
+
+def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_file = None, dpi = 100, show = True, cmin = None, cmax = None, both = False):
     if not output_file and not show:
         return
 
@@ -38,21 +69,8 @@ def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_fil
     else:
         indices = cloud.columns.values.tolist()
 
-    if not cmin or not cmax:
-        quant = cloud.quantile([low, high, 0.01, 0.99])
-        cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
-        if 'VEG' in indices:
-            vmin = quant.loc[0.01, 'VEG']
-            vmax = quant.loc[0.99, 'VEG']
-            cloud = cloud [vmin <= cloud['VEG']]
-            cloud = cloud [cloud['VEG'] <= vmax]
-            
-        cloud.dropna(inplace = True)
-    else:
-        cloud = cloud [cmin <= cloud.indices[0]]
-        cloud = cloud [cloud.indices[0] <= cmax]
 
-    cloud.reset_index(drop = True, inplace = True)
+    cloud = filter_cloud(cloud, low, high, cmin, cmax, both)
         
 #    fig, ax = plt.subplots()
     axes = scatter_matrix(cloud, alpha = 0.02, hist_kwds={'bins' : 50}, figsize = (1200/dpi, 800/dpi))
@@ -73,7 +91,10 @@ def display_stats(cloud, indices = None, low = 0.0008, high = 0.9992, output_fil
     plt.close('all')
     plt.ion()
 
-def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, dpi = 400, show = True, cmin = None, cmax = None, levels = None, both = False, nbins = 50):
+def stats_pair(cloud, indices, \
+               output_file = None, dpi = 400, show = True, \
+               cmin = None, cmax = None, low = 0.0008, high = 0.9992, both = False, \
+               levels = (0.03, 0.08, 0.15, 0.4, 0.6, 0.8), nbins = 50):
     if not output_file and not show:
         return
 
@@ -83,23 +104,33 @@ def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, 
 
     plt.ioff()
 
-    if not cmin or not cmax or both:
-        quant = cloud.quantile([low, high])
-        cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
-        cloud.dropna(inplace = True)
-    if cmin and cmax:    
-        cloud = cloud [cmin <= cloud[indices[0]]]
-        cloud = cloud [cloud[indices[0]] <= cmax]
+    if not len(indices) == 2:
+        print "Indices should contain exactly two distinct index names. {} given. Aborting".format(len(indices))
 
-    cloud.dropna(inplace = True)
+    cloud = cloud[indices]
+    cloud.reset_index(drop = True, inplace = True)
+
+    cloud = filter_cloud(cloud, low, high, cmin, cmax, both)
+
+#    if not cmin or not cmax or both:
+#        quant = cloud.quantile([low, high])
+#        cloud = cloud.apply (lambda x : x[(x > quant.loc[low, x.name]) & (x < quant.loc[high, x.name])], axis = 0)
+#        cloud.dropna(inplace = True)
+#    if cmin and cmax:    
+#        cloud = cloud [cmin <= cloud[indices[0]]]
+#        cloud = cloud [cloud[indices[0]] <= cmax]
+
+#    cloud.dropna(inplace = True)
 
     H, xedges, yedges = numpy.histogram2d(cloud[indices[0]], cloud[indices[1]], bins = [nbins, nbins], normed = True)
     H = numpy.rot90(H)
     H = numpy.flipud(H)
     extent = [xedges[0], xedges[-1], yedges[0], yedges[-1]]
     
-    if not levels:
-        levels = (0.03, 0.08, 0.15, 0.4, 0.6, 0.8)
+    print "max {}, min {}".format(numpy.amax(H), numpy.amin(H))
+    print "count of points {} size of bin {}".format(cloud[indices[0]].size, abs(extent[0] - extent[1])*abs(extent[2] - extent[3])/(nbins*nbins))
+    bin_area = abs(extent[0] - extent[1])*abs(extent[2] - extent[3])/(nbins*nbins)
+
     colors = ['#ff0000ff', '#aa5511ff', '#dd6622ff', '#ffda97ff', '#998822ff', '#779911ff']
 
     density = ax.imshow(H, interpolation = 'bilinear', origin = 'lower', cmap = 'hot', extent = extent, aspect = 'auto', alpha = 0.9)
@@ -108,7 +139,7 @@ def stats_pair(cloud, indices, low = 0.0008, high = 0.9992, output_file = None, 
     ax.set_xlabel(indices[0])
     ax.set_ylabel(indices[1])
 
-    contours = ax.contour(gaussian_filter(H, 1.2), levels = levels, origin = 'lower', linewidths = 2.2, extent = extent, alpha = 1.0, colors = colors, normalize = True)
+    contours = ax.contour(gaussian_filter(H, 1.2), levels = levels, origin = 'lower', linewidths = 2.2, extent = extent, alpha = 1.0, colors = colors)
     for c in contours.collections:
         c.set_linestyle("solid")
     ax.clabel(contours, inline = 1, fontsize = 11, fmt = '%3.2f')

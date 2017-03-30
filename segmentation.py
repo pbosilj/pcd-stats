@@ -13,6 +13,8 @@ from skimage.util import img_as_float
 from skimage.util import img_as_ubyte
 from skimage import io
 
+from timeit import default_timer as timer
+
 import argparse
 
 
@@ -25,27 +27,35 @@ def superpixel_histograms(image, superpixels):
         counter += 1
     return hist
 
-def drop_out_thresholds(histograms, k = 0.7):
+def drop_out_thresholds(histograms, k = 0.7, invert = False):
     thresholds = []
     for hist in histograms:
         hist_sum = sum(hist)
-        cum_sum = numpy.cumsum(hist)
-        for i in xrange(1, 255):
+
+        if not invert:
+            iterRange =  xrange(1, 256)
+            cum_sum = numpy.cumsum(hist)
+        else:
+            iterRange = xrange(254, -1, -1)
+            cum_sum = numpy.cumsum(hist[::-1])[::-1]
+        for i in iterRange:
             if float(cum_sum[i]) / hist_sum >= (1 - k):
                 thresholds.append(i)
                 break
     return thresholds
 
-def otsu_superpixel(image, superpixels, k = 0.7):
+def otsu_superpixel(image, superpixels, k = 0.7, invert = False):
     histograms = superpixel_histograms(image, superpixels)
-    dot = drop_out_thresholds(histograms, k)
+    dot = drop_out_thresholds(histograms, k, invert)
     dot_sorted = zip(dot, range(len(dot)))
     dot_sorted.sort()
+    if invert:
+        dot_sorted.reverse()
 
     sum_all = 0
     
     for hist in histograms:
-        for i in xrange(1, 255):
+        for i in xrange(1, 256):
             sum_all += i*hist[i]
 
     wB = 0
@@ -55,10 +65,15 @@ def otsu_superpixel(image, superpixels, k = 0.7):
     threshold = 0
 
     current_superpixel = 0
-    for thresh in xrange(0, 255):
+    if not invert:
+        iterRange = xrange(0, 256)
+    else:
+        iterRange = xrange(255, -1, -1)
+
+    for thresh in iterRange:
         while current_superpixel < len(dot_sorted) and dot_sorted[current_superpixel][0] == thresh:
             wB += sum(histograms[dot_sorted[current_superpixel][1]])
-            for i in xrange(1, 255):
+            for i in xrange(1, 256):
                 sumB += i*histograms[dot_sorted[current_superpixel][1]][i]
             current_superpixel += 1
         if wB == 0:
@@ -79,33 +94,16 @@ def otsu_superpixel(image, superpixels, k = 0.7):
     accepted = []
     current_superpixel = len(dot_sorted)-1
 
-    while current_superpixel >= 0 and dot_sorted[current_superpixel][0] > threshold:       
-        accepted.append(dot_sorted[current_superpixel][1])
-        current_superpixel -= 1
+    while current_superpixel >= 0 and ((invert == False and dot_sorted[current_superpixel][0] > threshold) or (invert == True and dot_sorted[current_superpixel][0] < threshold)):       
+            accepted.append(dot_sorted[current_superpixel][1])
+            current_superpixel -= 1
 
     
-    print("Accepted {} out of {} superpixels".format(len(accepted), len(hist)))
-    
+    print("Accepted {} out of {} superpixels".format(len(accepted), len(histograms)))
+    start = timer()
+
     mask = numpy.zeros(image.shape[:2], dtype = "uint8")
-#    print(image.shape[0] * image.shape[1])
-#    for i in xrange(image.shape[0]):
-#        for j in xrange(image.shape[1]):
-#            if (counter % 10000) == 0:
-#                print(counter)
-#            counter += 1
-#            if superpixels[i][j] in accepted:
-#                mask[i][j] = 255
-
-#    for value in accepted:
-#        mask[superpixels == value] = 255
     mask[numpy.in1d(superpixels, accepted).reshape(mask.shape)] = 255
-#    truth_mask = [ [ label in accepted for label in sp_row ] for sp_row in superpixels if sp_row.any() in accepted]
-#    mask[truth_mask] = 255
-#    mask[(superpixels in accepted).all()] = 255
-#    for (mask_val, sp_num) in zip(numpy.nditer(mask, order = 'C', op_flags = ['readwrite']), numpy.nditer(superpixels, order = 'C')):
-#        counter = counter+1
-#        if sp_num in accepted:
-#            mask_val[...] = 255
 
     return threshold, mask
 
@@ -143,12 +141,13 @@ print("SLIC superpixels calculated")
 
 import cv2
 
-ret,thr =cv2.threshold(img_as_ubyte(img_CIVE_norm),0,255,cv2.THRESH_OTSU)
+ret,thr =cv2.threshold(img_as_ubyte(img_CIVE_norm),0,255,cv2.THRESH_OTSU+cv2.THRESH_BINARY_INV)
 
 print("Otsu's threshold calculated for CIVE image: {}".format(ret))
 
 if 1:
-    for k in numpy.linspace(0.2, 0.8, endpoint = True, num = 7):
+    #for k in numpy.linspace(0.2, 0.8, endpoint = True, num = 7):
+     for k in [0.5]:
         spret, spthr = otsu_superpixel(img_as_ubyte(img_CIVE_norm), segments_slic, k = k)
         print("Otsu's on Slick for acceptance percentage {} is {}".format(k, spret))
         fig, ax = plt.subplots(2,2, figsize=(10,10), sharex=True, sharey=True, subplot_kw={'adjustable':'box-forced'})

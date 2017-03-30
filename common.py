@@ -9,6 +9,8 @@ def to_Point_rgb(x):
     return Point_rgb(r = x[0], g = x[1], b = x[2])
 
 def normalize_rgb(point_rgb):
+    if not (hasattr(point_rgb, 'r') and hasattr(point_rgb, 'g') and hasattr(point_rgb, 'b')):
+        point_rgb = to_Point_rgb(point_rgb)
     sum_all = float(point_rgb.r + point_rgb.g + point_rgb.b)
     return Point_rgb(r = point_rgb.r / sum_all, g = point_rgb.g / sum_all, b = point_rgb.b / sum_all)
 

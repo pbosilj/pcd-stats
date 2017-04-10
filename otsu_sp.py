@@ -98,7 +98,10 @@ def main():
 
     ap.add_argument("-d", "--display", required = False, help = "Display the results of Otsu's segmentation on superpixels. Optionally, compare with Otsu's segmentation on pixels.", nargs = "?", const = "single", choices = ["single", "compare", "full"])
     ap.add_argument("-i", "--image", required = True, nargs = '+', help = "Path to the image or images to be processed.")
-    ap.add_argument("-v", "--verbose", required = False, help = "Increase output verbosity", action = "store_true")
+    
+    verbosity_group = ap.add_mutually_exclusive_group()    
+    verbosity_group.add_argument("-v", "--verbose", required = False, help = "Increase output verbosity", action = "store_true")
+    verbosity_group.add_argument("-s", "--silent", required = False, help = "Silent execution. Only one number per line for each image is output", action = "store_true")
 
     ap.add_argument("-m", "--model", required = False, help = "Select a model used for superpixel representation.", action = "store_true")
     subparsers = ap.add_subparsers(help="Model selection for the --model option. (Only used when -m is used)", dest='model_sel')   
@@ -124,16 +127,19 @@ def main():
         # load the image and convert it to a floating point data type
         img = img_as_float(io.imread(image_path))
 
-        print("Input image {}.".format(image_path))
+        if not args['silent']:
+            print("Input image {}.".format(image_path))
 
         img_CIVE = numpy.apply_along_axis(partial(color_index.CIVE, normalize = False), 2, img)
         img_CIVE_norm = exposure.rescale_intensity(img_CIVE, in_range = (img_CIVE.min(), img_CIVE.max()))
 
-        print("Image CIVE calculated")
+        if not args['silent']:
+            print("Image CIVE calculated")
 
         segments_slic = slic(img_CIVE_norm, n_segments=35000, sigma = 0, convert2lab=False, compactness=0.05)
 
-        print("SLIC superpixels calculated")
+        if not args['silent']:
+            print("SLIC superpixels calculated")
 
         if not args['model'] or args['model_sel'] == 'avg':
             dot_function = superpixels_dot.average_dot
@@ -149,8 +155,11 @@ def main():
                 print("Using the acceptance percentage ('perc') model for superpixel acceptance.")
 
         spret, spthr = superpixels_otsu.otsu_superpixels_fixed_dot(img_as_ubyte(img_CIVE_norm), segments_slic, invert = True, dot_function = dot_function, verbose = args['verbose'])[:2]
-            
-        print("Otsu's segmentation on superpixels completed, with T={}".format(spthr))
+        
+        if not args['silent']:
+            print("Otsu's segmentation on superpixels completed, with T={}".format(spthr))
+        else:
+            print("{}".format(spthr))
 
         if args["display"]:
             if args["display"] == "full":
@@ -165,6 +174,8 @@ def main():
                 stax = 0
                 tax = 1
 
+            fig.set_title("Otsu's thresholding results")
+
 
             if args["display"] == "compare" or args["display"] == "full":
 
@@ -175,7 +186,8 @@ def main():
 
                 thr, ret =cv2.threshold(img_as_ubyte(img_CIVE_norm),0,255,cv2.THRESH_OTSU+cv2.THRESH_BINARY_INV)
 
-                print("Otsu's threshold calculated for CIVE image: {}".format(thr))
+                if args['verbose']:                
+                    print("Otsu's threshold calculated for CIVE image: {}".format(thr))
 
                 ax[tax].imshow(ret, cmap = 'gray')
                 ax[tax].set_title("Otsu's threshold")
@@ -195,8 +207,8 @@ def main():
 
             plt.tight_layout()
             plt.show()
-
-        print
+        if not args['silent']:
+            print
 
 if __name__ == "__main__":
     main()

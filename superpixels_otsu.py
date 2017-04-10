@@ -49,6 +49,9 @@ def otsu_core(image, histograms, dot, invert = False, verbose = False):
             var_max = var_between
             threshold = thresh
 
+    if var_max == 0:
+        threshold = 0
+
     if verbose:
         print("Otsu's thresholding for superpixels: best threshold={} for variance={}.".format(threshold, var_max))
 
@@ -73,7 +76,7 @@ def otsu_mask(superpixels, dot, threshold, invert = False, verbose = False):
 
     return mask
 
-def otsu_superpixels_precentage(image, superpixels, invert = False, verbose = False):
+def otsu_superpixels_precentage(image, superpixels, invert = False, verbose = False, k_start = 0.2, k_end = 0.8):
     histograms = superpixels_dot.superpixels_histograms(image, superpixels)
 
     mult = 1
@@ -91,9 +94,6 @@ def otsu_superpixels_precentage(image, superpixels, invert = False, verbose = Fa
     var_max = 0
     threshold = 0
     k_best = 0
-
-    k_start = 0.2
-    k_end = 0.8
 
     tests = 0
     while i < len(all_thr):

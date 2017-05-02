@@ -1,6 +1,8 @@
 #!/usr/local/bin/python
 # -*- coding: utf-8 -*-
 
+# implementation of Otsu's method on superpixels. Uses a pixel model based on which the drop-out thresholds for each superpixel are calculated
+
 import superpixels_dot # for dot_sorted
 import numpy
 
@@ -27,6 +29,8 @@ def otsu_core(image, histograms, dot, invert = False, verbose = False):
     else:
         iterRange = xrange(255, -1, -1)
 
+    all_var = [0]*256
+
     for thresh in iterRange:
         while current_superpixel < len(dot_sorted) and dot_sorted[current_superpixel][0] == thresh:
             wB += sum(histograms[dot_sorted[current_superpixel][1]])
@@ -43,10 +47,10 @@ def otsu_core(image, histograms, dot, invert = False, verbose = False):
         mB = sumB / wB
         mF = (sum_all - sumB) / wF
         
-        var_between = float(wB) * float(wF) * ((mB - mF)**2)
+        all_var[thresh] = float(wB) * float(wF) * ((mB - mF)**2)
 
-        if var_between > var_max:
-            var_max = var_between
+        if all_var[thresh] > var_max:
+            var_max = all_var[thresh]
             threshold = thresh
 
     if var_max == 0:
@@ -55,7 +59,53 @@ def otsu_core(image, histograms, dot, invert = False, verbose = False):
     if verbose:
         print("Otsu's thresholding for superpixels: best threshold={} for variance={}.".format(threshold, var_max))
 
-    return var_max, threshold
+    return var_max, threshold, all_var
+
+def otsu_reduced_core(image, dot, invert = False, verbose = False):
+    dot_sorted = superpixels_dot.dot_sort(dot, invert)
+
+    total = len(dot)
+    dot_histogram = numpy.histogram(dot, range = [0, 256], bins = 256)[0]
+    
+    sumB = 0
+    wB = 0
+    var_max = 0.0
+    #print(dot_histogram)
+    #print(type(dot_histogram))
+    sum_all = numpy.dot(range(0, len(dot_histogram)), dot_histogram)
+
+    if not invert:
+        iterRange = xrange(0, 256)
+    else:
+        iterRange = xrange(255, -1, -1)
+
+    all_var = [0]*256
+
+    for thresh in iterRange:
+        wB += dot_histogram[thresh]
+        if wB == 0:
+            continue
+        wF = total - wB
+        if wF == 0:
+            break
+        sumB += thresh*dot_histogram[thresh]
+        mB = sumB / wB
+        mF = (sum_all - sumB) / wF
+        
+        all_var[thresh] = float(wB) * float(wF) * ((mB - mF)**2)
+
+        if all_var[thresh] > var_max:
+            var_max = all_var[thresh]
+            threshold = thresh
+
+    if var_max == 0:
+        threshold = 0
+
+    if verbose:
+        print("Otsu's reduced thresholding for superpixels: best threshold={} for variance={}.".format(threshold, var_max))
+
+    return var_max, threshold, all_var
+
 
 def otsu_mask(superpixels, dot, threshold, invert = False, verbose = False):
 
@@ -106,7 +156,7 @@ def otsu_superpixels_precentage(image, superpixels, invert = False, verbose = Fa
         if (k > k_end):
             break
         tests += 1
-        var, thr = otsu_core(image, histograms, dot_cur, invert, verbose)
+        var, thr = otsu_core(image, histograms, dot_cur, invert, verbose)[:2]
         if verbose:
             print("Test # {} with k={}, output var={}, thr={} (best var={} for thr={} at k={}).".format(tests, k, var, thr, var_max, threshold, k_best))
         if var > var_max:
@@ -131,7 +181,7 @@ def otsu_superpixels_precentage(image, superpixels, invert = False, verbose = Fa
 
     mask = otsu_mask(superpixels, dot_cur, threshold, invert, verbose)
 
-    return mask, threshold, k_best
+    return threshold, mask, k_best
 
 def otsu_superpixels_fixed_dot(image, superpixels, invert = False, dot_function = partial(superpixels_dot.k_percent_dot, k = 0.7), verbose = False):        
     histograms = superpixels_dot.superpixels_histograms(image, superpixels)
@@ -139,8 +189,15 @@ def otsu_superpixels_fixed_dot(image, superpixels, invert = False, dot_function 
 #    dot = median_thresholds(histograms, invert)
     dot = dot_function(histograms, invert = invert)
 
-    var_max, threshold = otsu_core(image, histograms, dot, invert, verbose)
+    var_max, threshold, all_var = otsu_core(image, histograms, dot, invert, verbose)
     mask = otsu_mask(superpixels, dot, threshold, invert, verbose)
 
-    return mask, threshold
+    return threshold, mask, all_var
 
+def otsu_superpixels_reduced_fixed_dot(image, superpixels, invert = False, dot_function = partial(superpixels_dot.k_percent_dot, k = 0.7), verbose = False):
+    dot = dot_function(superpixels_dot.superpixels_histograms(image, superpixels), invert = invert)
+
+    var_max, threshold, all_var = otsu_reduced_core(image, dot, invert, verbose)
+    mask = otsu_mask(superpixels, dot, threshold, invert, verbose)
+
+    return threshold, mask, all_var

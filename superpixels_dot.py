@@ -1,6 +1,8 @@
 #!/usr/local/bin/python
 # -*- coding: utf-8 -*-
 
+# calculates the drop-out thresholds for all the superpixels according to a given model
+
 import numpy
 
 def superpixels_histograms(image, superpixels):

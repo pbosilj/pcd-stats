@@ -8,7 +8,7 @@ import subprocess as subproc
 import sys
 import common # for split_rgba
 
-def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True):
+def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True): # read a single point could
 
     if filename.endswith((".xml", ".pcd")):
         filename = filename[0:-4]
@@ -50,7 +50,7 @@ def read_cloud(path, filename, use_existing = False, cleanup_pcd = True, drop_a 
 
     return cloud
 
-def read_clouds(path, filenames, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True):
+def read_clouds(path, filenames, use_existing = False, cleanup_pcd = True, drop_a = True, drop_rgba = True): # read multiple point clouds
     all_full_names = glob.glob(os.path.join(path,filenames))
     cloud = pandas.DataFrame()
     for filename in map(os.path.basename, all_full_names):

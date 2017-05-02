@@ -15,93 +15,36 @@ from skimage.util import img_as_ubyte
 from skimage import io
 from skimage import exposure
 
+import os
+
 from functools import partial
 
 import argparse
+import argparse_help
 import numpy
 
 import sys
 
-def ratioFloat (string):
-    value = float(string)
-    if value < 0 or value > 1:
-        raise argparse.ArgumentTypeError('Value of a ration has to be between 0 and 1.')
-    return value
-
-class _HelpAction(argparse._HelpAction):
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.print_help()
-
-        # retrieve subparsers from parser
-        subparsers_actions = [
-            action for action in parser._actions
-            if isinstance(action, argparse._SubParsersAction)]
-        # there will probably only be one subparser_action,
-        # but better save than sorry
-        print
-        for subparsers_action in subparsers_actions:
-            # get all subparsers and print help
-            for choice, subparser in subparsers_action.choices.items():
-                print("Positional argument '{}':".format(choice))
-                print(subparser.format_help())
-
-        parser.exit()
-
-def set_default_subparser(self, name, args=None):
-    """default subparser selection. Call after setup, just before parse_args()
-    name: is the name of the subparser to call by default
-    args: if set is the argument list handed to parse_args()
-
-    , tested with 2.7, 3.2, 3.3, 3.4
-    it works with 2.6 assuming argparse is installed
-    """
-    subparser_found = False
-    existing_default = False
-    for arg in sys.argv[1:]:
-        if arg in ['-h', '--help']:  # global help if no subparser
-            break
-    else:
-        for x in self._subparsers._actions:
-            if not isinstance(x, argparse._SubParsersAction):
-                continue
-            for sp_name in x._name_parser_map.keys():
-                if sp_name in sys.argv[1:]:
-                    subparser_found = True
-                if sp_name == name:
-                    existing_default = True
-        if not subparser_found:
-            # insert default in first position, this implies no
-            # global options without a sub_parsers specified
-            if not existing_default:
-                for x in self._subparsers._actions:
-                    if not isinstance(x, argparse._SubParsersAction):
-                        continue
-                    x.add_parser(name)
-                    break
-            self.add_argument("--dummy-subparser-guard", action = "store_true")
-            if args is None:
-                sys.argv.insert(len(sys.argv), name)
-            else:
-                args.insert(len(args), name)
-
-argparse.ArgumentParser.set_default_subparser = set_default_subparser
+argparse.ArgumentParser.set_default_subparser = argparse_help.set_default_subparser
 
 def main():
 
     # construct the argument parser and parse the arguments
-    ap = argparse.ArgumentParser(add_help=False)
+    ap = argparse.ArgumentParser(add_help=False, description = "Run Otsu's thresholding on a superpixel image or sequence of images using a selected color index.")
 
-    ap.add_argument ('-h', '--help', action=_HelpAction, help='show this help message and exit')
+    ap.add_argument ('-h', '--help', action=argparse_help._HelpAction, help='show this help message and exit')
 #    ap.add_argument('--help', action=_HelpAction, help='help for help if you need some help')  # add custom help
 
 
     ap.add_argument("-d", "--display", required = False, help = "Display the results of Otsu's segmentation on superpixels. Optionally, compare with Otsu's segmentation on pixels.", nargs = "?", const = "single", choices = ["single", "compare", "full"])
+    ap.add_argument("-s", "--save", required = False, help = "Save the output images to file", action = "store_true")
     ap.add_argument("-i", "--image", required = True, nargs = '+', help = "Path to the image or images to be processed.")
     
+    ap.add_argument("-c", "--color-index", required = False, help = "Specify color index to use for obtaining the grayscale image to threshold", default = "CIVE", choices = ["CIVE", "nCIVE", "ExG", "ExR", "mExG", "nExG", "nExR", "nmExG", "VEG"])
+
     verbosity_group = ap.add_mutually_exclusive_group()    
     verbosity_group.add_argument("-v", "--verbose", required = False, help = "Increase output verbosity", action = "store_true")
-    verbosity_group.add_argument("-s", "--silent", required = False, help = "Silent execution. Only one number per line for each image is output", action = "store_true")
+    verbosity_group.add_argument("-q", "--quiet", required = False, help = "Quiet execution. Only one number per line for each image is output.", action = "store_true")
 
     ap.add_argument("-m", "--model", required = False, help = "Select a model used for superpixel representation.", action = "store_true")
     subparsers = ap.add_subparsers(help="Model selection for the --model option. (Only used when -m is used)", dest='model_sel')   
@@ -127,19 +70,38 @@ def main():
         # load the image and convert it to a floating point data type
         img = img_as_float(io.imread(image_path))
 
-        if not args['silent']:
+        if not args['quiet']:
             print("Input image {}.".format(image_path))
 
-        img_CIVE = numpy.apply_along_axis(partial(color_index.CIVE, normalize = False), 2, img)
-        img_CIVE_norm = exposure.rescale_intensity(img_CIVE, in_range = (img_CIVE.min(), img_CIVE.max()))
+        normalize = False
+        invert = False
+        if args['color_index'][0] == 'n':
+            normalize = True
+        if args['color_index'][-4:] == 'CIVE':
+            img_index = numpy.apply_along_axis(partial(color_index.CIVE, normalize = normalize), 2, img)
+            invert = True
+        elif args['color_index'][-3:] == 'ExG':
+            img_index = numpy.apply_along_axis(partial(color_index.excess_green, normalize = normalize), 2, img)
+        elif args['color_index'][-3:] == 'ExR':
+            img_index = numpy.apply_along_axis(partial(color_index.excess_red, normalize = normalize), 2, img)
+        elif args['color_index'][-4:] == 'mExR':
+            img_index = numpy.apply_along_axis(partial(color_index.modified_excess_green, normalize = normalize), 2, img)
+        elif args['color_index'][-3:] == 'VEG':
+            img_index = numpy.apply_along_axis(partial(color_index.VEG, normalize = normalize), 2, img)
 
-        if not args['silent']:
-            print("Image CIVE calculated")
+        #print("Min max {} {}".format(img_index.min(), img_index.max()))
 
-        segments_slic = slic(img_CIVE_norm, n_segments=35000, sigma = 0, convert2lab=False, compactness=0.05)
+        image_gray_norm = exposure.rescale_intensity(img_index, in_range = (img_index.min(), img_index.max())) # get range -1 to 1 
 
-        if not args['silent']:
-            print("SLIC superpixels calculated")
+        if not args['quiet']:
+            print("Image {} calculated.".format(args['color_index']))
+            if args['save']:
+                plt.imsave(os.path.splitext(image_path)[0]+"_"+args['color_index']+os.path.splitext(image_path)[-1], image_gray_norm, cmap = 'gray')
+
+        segments_slic = slic(image_gray_norm, n_segments=35000, sigma = 0, convert2lab=False, compactness=0.05)
+
+        if not args['quiet']:
+            print("SLIC superpixels calculated.")
 
         if not args['model'] or args['model_sel'] == 'avg':
             dot_function = superpixels_dot.average_dot
@@ -154,12 +116,15 @@ def main():
             if args['verbose']:
                 print("Using the acceptance percentage ('perc') model for superpixel acceptance.")
 
-        spret, spthr = superpixels_otsu.otsu_superpixels_fixed_dot(img_as_ubyte(img_CIVE_norm), segments_slic, invert = True, dot_function = dot_function, verbose = args['verbose'])[:2]
+        spthr, spret = superpixels_otsu.otsu_superpixels_fixed_dot(img_as_ubyte(image_gray_norm), segments_slic, invert = invert, dot_function = dot_function, verbose = args['verbose'])[:2]
         
-        if not args['silent']:
+        if not args['quiet']:
             print("Otsu's segmentation on superpixels completed, with T={}".format(spthr))
         else:
             print("{}".format(spthr))
+
+        if args['save']:
+            plt.imsave(os.path.splitext(image_path)[0]+"_spseg_"+args['color_index']+os.path.splitext(image_path)[-1], spret, cmap = 'gray')
 
         if args["display"]:
             if args["display"] == "full":
@@ -174,9 +139,6 @@ def main():
                 stax = 0
                 tax = 1
 
-            fig.set_title("Otsu's thresholding results")
-
-
             if args["display"] == "compare" or args["display"] == "full":
 
                 ax[stax].imshow(spret, cmap = 'gray')
@@ -184,17 +146,24 @@ def main():
                
                 import cv2
 
-                thr, ret =cv2.threshold(img_as_ubyte(img_CIVE_norm),0,255,cv2.THRESH_OTSU+cv2.THRESH_BINARY_INV)
+                if invert:
+                    thr, ret =cv2.threshold(img_as_ubyte(image_gray_norm),0,255,cv2.THRESH_OTSU+cv2.THRESH_BINARY_INV)
+                else:
+                    thr, ret =cv2.threshold(img_as_ubyte(image_gray_norm),0,255,cv2.THRESH_OTSU+cv2.THRESH_BINARY)
 
                 if args['verbose']:                
-                    print("Otsu's threshold calculated for CIVE image: {}".format(thr))
+                    print("Otsu's threshold calculated for {} image: {}".format(args['color_index'], thr))
+
+                if args['save']:
+                    plt.imsave(os.path.splitext(image_path)[0]+"_seg_"+args['color_index']+os.path.splitext(image_path)[-1], ret, cmap = 'gray')
+
 
                 ax[tax].imshow(ret, cmap = 'gray')
                 ax[tax].set_title("Otsu's threshold")
                 
                 if args["display"] == "full":
-                    ax[1,0].imshow(img_CIVE_norm, cmap = 'gray')
-                    ax[1,0].set_title('CIVE')
+                    ax[1,0].imshow(image_gray_norm, cmap = 'gray')
+                    ax[1,0].set_title(args['color_index'])
                     ax[1,1].imshow(mark_boundaries(img, segments_slic))
                     ax[1,1].set_title('SLIC on Original')
                 for a in ax.ravel():
@@ -207,7 +176,7 @@ def main():
 
             plt.tight_layout()
             plt.show()
-        if not args['silent']:
+        if not args['quiet'] and image_path != args["image"][-1]:
             print
 
 if __name__ == "__main__":

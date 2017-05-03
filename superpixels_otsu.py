@@ -201,3 +201,12 @@ def otsu_superpixels_reduced_fixed_dot(image, superpixels, invert = False, dot_f
     mask = otsu_mask(superpixels, dot, threshold, invert, verbose)
 
     return threshold, mask, all_var
+
+def otsu_only_mask(image, superpixels, threshold, invert = False, dot_function = partial(superpixels_dot.k_percent_dot, k = 0.7), verbose = False):
+
+    histograms = superpixels_dot.superpixels_histograms(image, superpixels)
+    dot = dot_function(superpixels_dot.superpixels_histograms(image, superpixels), invert = invert)
+
+    mask = otsu_mask(superpixels, dot, threshold, invert, verbose)
+
+    return threshold, mask

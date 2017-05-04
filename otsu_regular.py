@@ -39,7 +39,6 @@ def main():
 
     ap.add_argument("-a", "--alpha", required = False, help = "Recency factor alpha, from range [0.0, 1.0]. Lower values mean longer system memory", default = "1.0", type=argparse_help.ratioFloat)
 
-    
     ap.add_argument("-c", "--color-index", required = False, help = "Specify color index to use for obtaining the grayscale image to threshold", default = "CIVE", choices = ["CIVE", "nCIVE", "ExG", "ExR", "mExG", "nExG", "nExR", "nmExG", "VEG"])
 
     ap.add_argument("-v", "--verbose", required = False, help = "Increase output verbosity", action = "store_true")

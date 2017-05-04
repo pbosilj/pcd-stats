@@ -54,7 +54,7 @@ def main():
     med_parser = subparsers.add_parser('med', help = "Use the median superpixel graylevel as superpixel model (Superpixel sp accepted for theshold T if med(sp) > T).")
     # percentage parser
     perc_parser = subparsers.add_parser('perc', help = "Use the acceptance percentage as superpixel model (Superpixel sp is accepted for threshold T if the ratio of pixels p > T and total pixels in the region is greater than k).")
-    perc_parser.add_argument("-k", help = "Defines the acceptance percentage for the percentage model. Values from [0.0, 1.0] accepted.", required = False, default = "0.7", type=ratioFloat)
+    perc_parser.add_argument("-k", help = "Defines the acceptance percentage for the percentage model. Values from [0.0, 1.0] accepted.", required = False, default = "0.7", type=argparse_help.ratioFloat)
 
     ap.set_default_subparser('no_model')
 
